@@ -1,0 +1,69 @@
+name: School Email Digest
+
+on:
+  schedule:
+    # Daily digest: ~6 PM EST Mon-Fri (23:00 UTC; will be ~7 PM during EDT)
+    - cron: '0 23 * * 1-5'
+    # Weekly recap: ~6:05 PM EST Friday
+    - cron: '5 23 * * 5'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Digest mode'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - weekly
+      dry_run:
+        description: 'Dry run (no email sent)'
+        type: boolean
+        default: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
+            echo "dry_run=${{ inputs.dry_run }}" >> $GITHUB_OUTPUT
+          else
+            # For scheduled runs: the :05 cron fires the weekly recap on Friday
+            MINUTE=$(date -u +%M)
+            if [ "$MINUTE" -ge "3" ] && [ "$(date -u +%u)" = "5" ]; then
+              echo "mode=weekly" >> $GITHUB_OUTPUT
+            else
+              echo "mode=daily" >> $GITHUB_OUTPUT
+            fi
+            echo "dry_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run digest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          CHILDREN: ${{ secrets.CHILDREN }}
+          SCHOOL_DOMAINS: ${{ secrets.SCHOOL_DOMAINS }}
+        run: |
+          FLAGS="--mode ${{ steps.mode.outputs.mode }}"
+          if [ "${{ steps.mode.outputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+          python3 digest.py $FLAGS
