@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load .env from the same directory as this file (local dev only; CI uses env vars)
 _env_path = Path(__file__).parent / ".env"
 if _env_path.exists():
-    load_dotenv(_env_path)
+    load_dotenv(_env_path, override=True)
 
 
 class Config:
