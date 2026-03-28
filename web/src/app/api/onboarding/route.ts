@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
+import { getAwsCredentials, AWS_REGION, USERS_TABLE } from "@/lib/aws";
 
 interface UserRecord {
   userId: string;
@@ -15,10 +16,7 @@ interface UserRecord {
   createdAt: string;
 }
 
-// DynamoDB config — when these env vars are set, we write to DynamoDB
-const AWS_REGION = process.env.AWS_REGION;
-const USERS_TABLE = process.env.USERS_TABLE;
-const useDynamo = !!(AWS_REGION && USERS_TABLE);
+const useDynamo = !!USERS_TABLE;
 
 // Local file fallback for dev
 const DATA_DIR = join(process.cwd(), ".data");
@@ -27,14 +25,14 @@ const USERS_FILE = join(DATA_DIR, "users.json");
 // ── DynamoDB helpers ──
 
 async function dynamoPutUser(user: UserRecord): Promise<void> {
-  // Dynamic import so the app doesn't fail if @aws-sdk isn't installed
   const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
   const { DynamoDBDocumentClient, PutCommand } = await import(
     "@aws-sdk/lib-dynamodb"
   );
 
+  const credentials = getAwsCredentials();
   const client = DynamoDBDocumentClient.from(
-    new DynamoDBClient({ region: AWS_REGION })
+    new DynamoDBClient({ region: AWS_REGION, ...(credentials && { credentials }) })
   );
 
   await client.send(
@@ -62,8 +60,9 @@ async function dynamoFindByEmail(email: string): Promise<string | null> {
     "@aws-sdk/lib-dynamodb"
   );
 
+  const credentials = getAwsCredentials();
   const client = DynamoDBDocumentClient.from(
-    new DynamoDBClient({ region: AWS_REGION })
+    new DynamoDBClient({ region: AWS_REGION, ...(credentials && { credentials }) })
   );
 
   const result = await client.send(
@@ -140,14 +139,12 @@ export async function POST(request: NextRequest) {
   };
 
   if (useDynamo) {
-    // Check if user already onboarded
     const existingAddress = await dynamoFindByEmail(email);
     if (existingAddress) {
       return NextResponse.json({ forwardAddress: existingAddress });
     }
     await dynamoPutUser(user);
   } else {
-    // Local file fallback
     const users = await readUsers();
     const existing = users.find((u) => u.email === email);
     if (existing) {

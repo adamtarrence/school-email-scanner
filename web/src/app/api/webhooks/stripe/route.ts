@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getAwsCredentials, AWS_REGION, USERS_TABLE } from "@/lib/aws";
 
-const AWS_REGION = process.env.AWS_REGION;
-const USERS_TABLE = process.env.USERS_TABLE;
-const useDynamo = !!(AWS_REGION && USERS_TABLE);
+const useDynamo = !!USERS_TABLE;
 
 async function deactivateUser(stripeCustomerId: string) {
   if (!useDynamo) {
@@ -16,8 +15,9 @@ async function deactivateUser(stripeCustomerId: string) {
     "@aws-sdk/lib-dynamodb"
   );
 
+  const credentials = getAwsCredentials();
   const client = DynamoDBDocumentClient.from(
-    new DynamoDBClient({ region: AWS_REGION })
+    new DynamoDBClient({ region: AWS_REGION, ...(credentials && { credentials }) })
   );
 
   // Look up user by stripe_customer_id
@@ -60,7 +60,8 @@ async function sendWarningEmail(customerEmail: string) {
     "@aws-sdk/client-ses"
   );
 
-  const ses = new SESClient({ region: AWS_REGION });
+  const credentials = getAwsCredentials();
+  const ses = new SESClient({ region: AWS_REGION, ...(credentials && { credentials }) });
 
   await ses.send(
     new SendEmailCommand({
