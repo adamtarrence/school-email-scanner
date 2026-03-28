@@ -43,9 +43,18 @@ class Config:
     AUTO_SKIP_SUBJECT_PATTERNS = [
         "Student Absence Received",     # SafeArrival confirmations
         "Weekly Schoology Summary",     # Weekly grade reports
-        "published an update",          # Schoology notification stubs
-        "posted an assignment",         # Schoology notification stubs
-        "posted a grade",              # Schoology notification stubs
+    ]
+
+    # Notification stubs: emails that just say "X posted something — click to view."
+    # These are NOT skipped; instead they're sent to Claude with a LINK-ONLY annotation
+    # so the digest can surface them honestly rather than silently dropping them.
+    NOTIFICATION_STUB_PATTERNS = [
+        "published an update",
+        "posted an assignment",
+        "posted a grade",
+        "posted a discussion",
+        "submitted",                    # generic portal submission notices
+        "new post",
     ]
 
     # ── Digest exclusions ──
@@ -101,6 +110,12 @@ class Config:
             base += f' -subject:"{subject}"'
 
         return base
+
+    @classmethod
+    def is_notification_stub(cls, subject: str) -> bool:
+        """True if the email looks like a portal notification (link-only stub)."""
+        subject_lower = subject.lower()
+        return any(p.lower() in subject_lower for p in cls.NOTIFICATION_STUB_PATTERNS)
 
     @classmethod
     def should_auto_skip(cls, sender: str, subject: str) -> bool:

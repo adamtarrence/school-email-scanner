@@ -99,9 +99,9 @@ const steps = [
         />
       </svg>
     ),
-    title: "Read your digest at 6 PM",
+    title: "Read your digest each evening",
     description:
-      "A clean daily briefing lands in your inbox every evening. Two minutes over dinner and you're caught up.",
+      "A clean daily briefing lands in your inbox at your chosen time. Two minutes over dinner and you're caught up.",
   },
 ];
 

@@ -10,6 +10,7 @@ import anthropic
 
 from config import Config
 from gmail_client import EmailMessage
+from url_fetcher import extract_first_url, fetch_linked_content, is_login_required
 
 
 def _mail_app_url(rfc822_message_id: str) -> str:
@@ -53,12 +54,18 @@ RULES:
    section keeps the parent in the loop without being overwhelming.
 4. SKIP entirely:
    - Fundraising, spirit wear, community flyers
-   - Automated notifications (grade posted, absence logged)
-   - Notification stubs that just say "X published an update" or
-     "X posted an assignment" with no real content — these are just
-     link-back notifications from Schoology and contain no useful info
-5. Use markdown: headers (##), bold, bullets. Keep it concise.
-6. Do NOT write long summaries. A few words per item is ideal.
+   - Automated notifications (absence logged)
+5. Handle LINK-ONLY emails carefully:
+   - Some emails are marked with [LINK-ONLY: url] — the email was just a
+     notification stub with no real content in the body.
+   - If the email also has [FETCHED CONTENT] below it, summarize that
+     content as you would any other email.
+   - If it only has [LINK-ONLY: url] with no fetched content, include a
+     brief line in Quick Hits with a note like "(login required to view)"
+     so the parent knows something was posted. Do NOT skip these silently —
+     the parent should know something exists even if we can't read it.
+6. Use markdown: headers (##), bold, bullets. Keep it concise.
+7. Do NOT write long summaries. A few words per item is ideal.
 
 LINKS:
 Each email has an ID like [EMAIL-3]. When you mention an item, make the key
@@ -93,15 +100,44 @@ mention)."""
 
 
 def _format_email(index: int, email: EmailMessage) -> str:
-    """Format a single email for inclusion in the batch prompt."""
+    """Format a single email for inclusion in the batch prompt.
+
+    For notification stub emails (e.g. "Spencer's teacher posted an assignment"),
+    we attempt to fetch the linked content. If the content is publicly accessible
+    we include it so Claude can summarize it. If it requires login, we annotate
+    with [LINK-ONLY] so Claude surfaces it rather than silently dropping it.
+    """
     body = email.body_text[:4000] if email.body_text else email.snippet
-    return (
+    header = (
         f"--- EMAIL-{index} ---\n"
         f"Subject: {email.subject}\n"
         f"From: {email.sender}\n"
         f"Date: {email.date}\n\n"
         f"{body}"
     )
+
+    if not Config.is_notification_stub(email.subject):
+        return header
+
+    # This looks like a portal notification — try to fetch the linked content
+    url = extract_first_url(body or "")
+    if not url:
+        return header
+
+    if is_login_required(url):
+        return header + f"\n\n[LINK-ONLY: {url}]"
+
+    print(f"  🔗 Fetching linked content: {url[:80]}...")
+    content, requires_login = fetch_linked_content(url)
+
+    if requires_login:
+        return header + f"\n\n[LINK-ONLY: {url}]"
+
+    if content:
+        return header + f"\n\n[FETCHED CONTENT from {url}]\n{content}"
+
+    # Fetch failed or returned nothing — still flag it
+    return header + f"\n\n[LINK-ONLY: {url}]"
 
 
 def _replace_email_links(markdown: str, link_map: dict[str, tuple[str, str]]) -> str:

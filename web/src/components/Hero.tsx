@@ -12,7 +12,8 @@ export default function Hero() {
           </h1>
           <p className="mt-5 text-lg sm:text-xl text-gray-600 max-w-lg mx-auto md:mx-0">
             Dozens of school emails become a 2-minute daily digest. Action items,
-            events, and updates — grouped by child, delivered at 6 PM.
+            events, and updates — grouped by child, delivered at a time that works for you.
+            Your original emails are never touched or deleted.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center md:justify-start">
             <a

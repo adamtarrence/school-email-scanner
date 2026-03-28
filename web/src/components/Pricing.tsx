@@ -3,11 +3,12 @@
 import { useState } from "react";
 
 const features = [
-  "Daily digest every school day at 6 PM",
+  "Daily digest every school day at your chosen time",
   "Action items highlighted with deadlines",
   "Events extracted and organized",
   "Grouped by child — works for any school",
-  "Links back to original emails",
+  "Links back to every original email",
+  "Originals never touched or deleted",
   "Cancel anytime",
 ];
 
@@ -22,10 +23,10 @@ export default function Pricing() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert(data.error || "Something went wrong. Please try again.");
+        alert("Error: " + (data.error || "Something went wrong. Please try again."));
       }
-    } catch {
-      alert("Something went wrong. Please try again.");
+    } catch (err) {
+      alert("Network error: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
