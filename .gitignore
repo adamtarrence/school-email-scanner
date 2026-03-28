@@ -7,3 +7,8 @@ __pycache__/
 *.pyc
 digest_preview.html
 .claude/
+
+# Web app
+web/node_modules/
+web/.next/
+web/.env.local

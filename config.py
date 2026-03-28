@@ -32,8 +32,7 @@ class Config:
     ]
 
     # ── Auto-skip rules ──
-    # Emails matching these rules are never sent to Claude for classification.
-    # They're automatically treated as LOW importance.
+    # Emails matching these rules are filtered out before reaching Claude.
     AUTO_SKIP_SENDERS = [
         "school@peachjar.com",          # Community flyers
         "no-reply@schoology.com",       # Grade summaries, course updates
@@ -44,6 +43,9 @@ class Config:
     AUTO_SKIP_SUBJECT_PATTERNS = [
         "Student Absence Received",     # SafeArrival confirmations
         "Weekly Schoology Summary",     # Weekly grade reports
+        "published an update",          # Schoology notification stubs
+        "posted an assignment",         # Schoology notification stubs
+        "posted a grade",              # Schoology notification stubs
     ]
 
     # ── Digest exclusions ──
@@ -54,7 +56,7 @@ class Config:
     ]
     DIGEST_EXCLUDE_SUBJECTS = [
         "Daily School Digest",
-        "Weekly School Recap",
+        "Weekly School Recap",  # legacy v3 digests
     ]
 
     @classmethod
