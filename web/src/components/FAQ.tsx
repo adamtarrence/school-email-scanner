@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "Is my data private?",
-    a: "Yes. SchoolSkim only reads forwarded copies of your emails — your originals stay in your inbox exactly as they arrived, untouched. We never modify, move, or delete anything in your email account. Forwarded content is sent to Anthropic's Claude AI for summarization and is not sold or shared.",
+    a: "Yes. SchoolSkim only reads forwarded copies of your emails — your originals stay in your inbox exactly as they arrived, untouched. We never modify, move, or delete anything in your email account. Forwarded content is processed by AI for summarization and is not sold or shared.",
   },
   {
     q: "What if an important email gets missed?",

@@ -49,6 +49,7 @@ export default function OnboardingForm({
   const [forwardAddress, setForwardAddress] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   function updateChild(index: number, field: keyof Child, value: string) {
     setChildren((prev) =>
@@ -336,7 +337,26 @@ export default function OnboardingForm({
               </div>
             </div>
 
-            <div className="flex gap-3 mt-8">
+            <label className="flex items-start gap-3 mt-8 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-brand accent-brand"
+              />
+              <span className="text-sm text-gray-600">
+                I agree to the{" "}
+                <Link href="/terms" target="_blank" className="text-brand hover:underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" target="_blank" className="text-brand hover:underline">
+                  Privacy Policy
+                </Link>
+              </span>
+            </label>
+
+            <div className="flex gap-3 mt-4">
               <button
                 type="button"
                 onClick={() => setStep(1)}
@@ -347,7 +367,7 @@ export default function OnboardingForm({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || !agreedToTerms}
                 className="flex-1 bg-brand text-white font-medium py-3 rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60"
               >
                 {submitting ? "Setting up..." : "Finish setup"}

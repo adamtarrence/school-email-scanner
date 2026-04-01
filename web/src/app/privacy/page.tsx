@@ -63,9 +63,9 @@ export default function PrivacyPage() {
               </h2>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  Forwarded emails are sent to Anthropic&apos;s Claude AI to
-                  generate your daily digest summary. Anthropic does not use this
-                  data to train its models.
+                  Forwarded emails are processed by AI to generate your daily
+                  digest summary. Our AI provider does not use your data to
+                  train its models.
                 </li>
                 <li>
                   Your children&apos;s names and school info are included in the
