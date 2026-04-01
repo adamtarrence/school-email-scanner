@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SchoolSkim — SES inbound email, DynamoDB tables, Lambda ingestion
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, prod]
+  EmailDomain:
+    Type: String
+    Default: schoolskim.com
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key for digest summarization
+  AnthropicModel:
+    Type: String
+    Default: claude-haiku-4-5-20251001
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        USERS_TABLE: !Ref UsersTable
+        EMAILS_TABLE: !Ref EmailsTable
+        DIGESTS_TABLE: !Ref DigestsTable
+        EMAIL_DOMAIN: !Ref EmailDomain
+
+Resources:
+  # ── DynamoDB Tables ──
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub schoolskim-users-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: forward_address
+          AttributeType: S
+        - AttributeName: stripe_customer_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: forward_address-index
+          KeySchema:
+            - AttributeName: forward_address
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: stripe_customer_id-index
+          KeySchema:
+            - AttributeName: stripe_customer_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: KEYS_ONLY
+
+  EmailsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub schoolskim-emails-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: received_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: received_at
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  DigestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub schoolskim-digests-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: sent_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: sent_at
+          KeyType: RANGE
+
+  # ── Lambda: Email Ingestion ──
+
+  IngestEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub schoolskim-ingest-email-${Stage}
+      Handler: handler.lambda_handler
+      CodeUri: ../functions/ingest_email/
+      Timeout: 15
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailsTable
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "arn:aws:s3:::schoolskim-ses-${Stage}/*"
+
+  IngestEmailPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref IngestEmailFunction
+      Action: lambda:InvokeFunction
+      Principal: ses.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  # ── Lambda: Daily Digest Cron ──
+
+  DigestCronFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub schoolskim-digest-cron-${Stage}
+      Handler: handler.lambda_handler
+      CodeUri: ../functions/digest_cron/
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ANTHROPIC_MODEL: !Ref AnthropicModel
+          FROM_EMAIL: !Sub "digest@${EmailDomain}"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DigestsTable
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
+      Events:
+        ScheduleEvening:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 22-3 * * ? *)
+            Description: "Run every hour from 6pm-9pm across US timezones (22-03 UTC)"
+            Enabled: true
+
+  # ── S3 Bucket for SES raw emails ──
+
+  SesEmailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub schoolskim-ses-${Stage}
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldEmails
+            Status: Enabled
+            ExpirationInDays: 7
+
+  SesEmailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SesEmailBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::schoolskim-ses-${Stage}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceAccount": !Ref AWS::AccountId
+
+  # ── SES Receipt Rule Set ──
+  # NOTE: SES receipt rules must be created in us-east-1.
+  # After deploying, you must manually:
+  #   1. Verify the domain in SES
+  #   2. Set this rule set as active
+
+  SesReceiptRuleSet:
+    Type: AWS::SES::ReceiptRuleSet
+    Properties:
+      RuleSetName: !Sub schoolskim-${Stage}
+
+  SesReceiptRule:
+    Type: AWS::SES::ReceiptRule
+    DependsOn:
+      - IngestEmailPermission
+      - SesEmailBucketPolicy
+    Properties:
+      RuleSetName: !Ref SesReceiptRuleSet
+      Rule:
+        Name: !Sub schoolskim-ingest-${Stage}
+        Enabled: true
+        ScanEnabled: true
+        Recipients:
+          - !Ref EmailDomain
+        Actions:
+          - S3Action:
+              BucketName: !Ref SesEmailBucket
+              ObjectKeyPrefix: inbound/
+          - LambdaAction:
+              FunctionArn: !GetAtt IngestEmailFunction.Arn
+              InvocationType: Event
+
+Outputs:
+  UsersTableName:
+    Value: !Ref UsersTable
+  EmailsTableName:
+    Value: !Ref EmailsTable
+  DigestsTableName:
+    Value: !Ref DigestsTable
+  IngestFunctionArn:
+    Value: !GetAtt IngestEmailFunction.Arn
+  DigestCronFunctionArn:
+    Value: !GetAtt DigestCronFunction.Arn
+  SesEmailBucketName:
+    Value: !Ref SesEmailBucket

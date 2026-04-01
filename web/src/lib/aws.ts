@@ -22,5 +22,8 @@ export function getAwsCredentials() {
   return undefined;
 }
 
-export const AWS_REGION = process.env.AWS_REGION || "us-east-1";
+export const AWS_REGION =
+  process.env.SCHOOLSKIM_AWS_REGION ||
+  process.env.AWS_REGION ||
+  "us-east-1";
 export const USERS_TABLE = process.env.USERS_TABLE;
