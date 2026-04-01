@@ -17,6 +17,11 @@ Parameters:
   AnthropicModel:
     Type: String
     Default: claude-haiku-4-5-20251001
+  UnsubscribeSecret:
+    Type: String
+    NoEcho: true
+    Default: schoolskim-unsub-default
+    Description: HMAC secret for unsubscribe link tokens
 
 Globals:
   Function:
@@ -142,6 +147,7 @@ Resources:
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           ANTHROPIC_MODEL: !Ref AnthropicModel
           FROM_EMAIL: !Sub "digest@${EmailDomain}"
+          UNSUBSCRIBE_SECRET: !Ref UnsubscribeSecret
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Footer() {
   const year = new Date().getFullYear();
 
@@ -31,12 +33,12 @@ export default function Footer() {
           <span>&copy; {year} SchoolSkim. All rights reserved.</span>
         </div>
         <div className="flex gap-6">
-          <a href="#" className="hover:text-gray-600 transition-colors">
+          <Link href="/privacy" className="hover:text-gray-600 transition-colors">
             Privacy Policy
-          </a>
-          <a href="#" className="hover:text-gray-600 transition-colors">
+          </Link>
+          <Link href="/terms" className="hover:text-gray-600 transition-colors">
             Terms of Service
-          </a>
+          </Link>
           <a
             href="mailto:hello@schoolskim.com"
             className="hover:text-gray-600 transition-colors"
