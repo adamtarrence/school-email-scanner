@@ -45,7 +45,7 @@ export default function Pricing() {
         <div className="max-w-sm mx-auto bg-white rounded-2xl border-2 border-brand shadow-lg p-8">
           <div className="text-center mb-6">
             <div className="text-5xl font-extrabold text-gray-900">
-              $3
+              $2.99
               <span className="text-xl font-medium text-gray-500">/month</span>
             </div>
             <p className="mt-2 text-brand font-semibold">14-day free trial</p>

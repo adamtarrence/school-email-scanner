@@ -38,7 +38,7 @@ export default function TermsPage() {
               </h2>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  SchoolSkim costs <strong>$3 per month</strong> after a{" "}
+                  SchoolSkim costs <strong>$2.99 per month</strong> after a{" "}
                   <strong>14-day free trial</strong>.
                 </li>
                 <li>
