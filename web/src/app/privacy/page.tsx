@@ -93,7 +93,7 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   Digest summaries (the output, not the original emails) are
-                  retained for your reference.
+                  retained in our database.
                 </li>
                 <li>
                   Account information is retained until you cancel your
