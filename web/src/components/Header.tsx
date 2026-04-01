@@ -1,8 +1,10 @@
+import Link from "next/link";
+
 export default function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-100">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <svg
             width="28"
             height="28"
@@ -27,7 +29,7 @@ export default function Header() {
             />
           </svg>
           <span className="text-xl font-bold text-gray-900">SchoolSkim</span>
-        </div>
+        </Link>
         <a
           href="#pricing"
           className="bg-brand hover:bg-brand-dark text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors"
