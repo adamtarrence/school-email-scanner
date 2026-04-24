@@ -97,62 +97,71 @@ async function writeUsers(users: UserRecord[]): Promise<void> {
 // ── Route handler ──
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const {
-    email,
-    stripeCustomerId,
-    stripeSubscriptionId,
-    children,
-    timezone,
-    digestTime,
-  } = body;
+  try {
+    const body = await request.json();
+    const {
+      email,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      children,
+      timezone,
+      digestTime,
+    } = body;
 
-  if (!email || !children?.length) {
-    return NextResponse.json(
-      { error: "Email and at least one child are required." },
-      { status: 400 }
-    );
-  }
-
-  for (const child of children) {
-    if (!child.name) {
+    if (!email || !children?.length) {
       return NextResponse.json(
-        { error: "Each child must have a name." },
+        { error: "Email and at least one child are required." },
         { status: 400 }
       );
     }
-  }
 
-  const userId = randomBytes(6).toString("hex");
-  const forwardAddress = `u-${userId}@schoolskim.com`;
-
-  const user: UserRecord = {
-    userId,
-    email,
-    forwardAddress,
-    children,
-    timezone: timezone || "America/New_York",
-    digestTime: digestTime || "18:00",
-    stripeCustomerId: stripeCustomerId || "",
-    stripeSubscriptionId: stripeSubscriptionId || "",
-    createdAt: new Date().toISOString(),
-  };
-
-  if (useDynamo) {
-    const existingAddress = await dynamoFindByEmail(email);
-    if (existingAddress) {
-      return NextResponse.json({ forwardAddress: existingAddress });
+    for (const child of children) {
+      if (!child.name) {
+        return NextResponse.json(
+          { error: "Each child must have a name." },
+          { status: 400 }
+        );
+      }
     }
-    await dynamoPutUser(user);
-  } else {
-    const users = await readUsers();
-    const existing = users.find((u) => u.email === email);
-    if (existing) {
-      return NextResponse.json({ forwardAddress: existing.forwardAddress });
-    }
-    users.push(user);
-    await writeUsers(users);
-  }
 
-  return NextResponse.json({ forwardAddress });
+    const userId = randomBytes(6).toString("hex");
+    const forwardAddress = `u-${userId}@schoolskim.com`;
+
+    const user: UserRecord = {
+      userId,
+      email,
+      forwardAddress,
+      children,
+      timezone: timezone || "America/New_York",
+      digestTime: digestTime || "18:00",
+      stripeCustomerId: stripeCustomerId || "",
+      stripeSubscriptionId: stripeSubscriptionId || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    if (useDynamo) {
+      const existingAddress = await dynamoFindByEmail(email);
+      if (existingAddress) {
+        return NextResponse.json({ forwardAddress: existingAddress });
+      }
+      await dynamoPutUser(user);
+    } else {
+      const users = await readUsers();
+      const existing = users.find((u) => u.email === email);
+      if (existing) {
+        return NextResponse.json({ forwardAddress: existing.forwardAddress });
+      }
+      users.push(user);
+      await writeUsers(users);
+    }
+
+    return NextResponse.json({ forwardAddress });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Onboarding error:", err);
+    return NextResponse.json(
+      { error: `Failed to save your account: ${message}` },
+      { status: 500 }
+    );
+  }
 }
