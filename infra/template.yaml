@@ -112,6 +112,9 @@ Resources:
       Handler: handler.lambda_handler
       CodeUri: ../functions/ingest_email/
       Timeout: 15
+      Environment:
+        Variables:
+          FROM_EMAIL: !Sub "digest@${EmailDomain}"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
@@ -123,6 +126,11 @@ Resources:
               Action:
                 - s3:GetObject
               Resource: !Sub "arn:aws:s3:::schoolskim-ses-${Stage}/*"
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
 
   IngestEmailPermission:
     Type: AWS::Lambda::Permission

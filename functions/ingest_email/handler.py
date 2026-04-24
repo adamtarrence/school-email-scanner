@@ -17,9 +17,14 @@ import boto3
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
+ses = boto3.client("ses")
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 EMAILS_TABLE = os.environ["EMAILS_TABLE"]
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "digest@schoolskim.com")
+
+# Gmail sends forwarding verification from this address.
+GMAIL_FORWARDING_SENDER = "forwarding-noreply@google.com"
 
 
 def lambda_handler(event, context):
@@ -62,6 +67,22 @@ def lambda_handler(event, context):
                 if parsed["sender"]:
                     sender = parsed["sender"]
 
+        # If this is a Gmail forwarding verification email, relay it to the
+        # user's owner email instead of storing it. Otherwise the user
+        # can't complete forwarding setup because the verification link
+        # lives in an inbox they don't have access to.
+        if _is_gmail_forwarding_verification(sender, subject):
+            _relay_verification_email(
+                owner_email=user["email"],
+                subject=subject,
+                body=body_text,
+            )
+            print(
+                f"Relayed Gmail forwarding verification to "
+                f"{user['email']} (user {user['user_id']})"
+            )
+            continue
+
         # Store in DynamoDB
         _store_email(
             user_id=user["user_id"],
@@ -78,6 +99,38 @@ def lambda_handler(event, context):
         )
 
     return {"statusCode": 200}
+
+
+def _is_gmail_forwarding_verification(sender: str, subject: str) -> bool:
+    """Detect Gmail's forwarding verification email."""
+    sender_lower = (sender or "").lower()
+    subject_lower = (subject or "").lower()
+    return (
+        GMAIL_FORWARDING_SENDER in sender_lower
+        or "gmail forwarding confirmation" in subject_lower
+    )
+
+
+def _relay_verification_email(owner_email: str, subject: str, body: str) -> None:
+    """Forward a Gmail verification email to the user's real inbox."""
+    relay_subject = f"[SchoolSkim] Action required: {subject}"
+    relay_body = (
+        "Gmail sent a forwarding verification to your SchoolSkim address.\n"
+        "We can't click the link for you, so we're forwarding it here.\n"
+        "Open the confirmation link below (or copy the 9-digit code) and\n"
+        "paste it back into Gmail's forwarding settings to activate\n"
+        "forwarding to SchoolSkim.\n\n"
+        "--- Original message ---\n\n"
+        f"{body}"
+    )
+    ses.send_email(
+        Source=FROM_EMAIL,
+        Destination={"ToAddresses": [owner_email]},
+        Message={
+            "Subject": {"Data": relay_subject, "Charset": "UTF-8"},
+            "Body": {"Text": {"Data": relay_body, "Charset": "UTF-8"}},
+        },
+    )
 
 
 def _lookup_user(forward_address: str) -> dict | None:
