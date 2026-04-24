@@ -17,9 +17,25 @@ import boto3
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
+ses = boto3.client("ses")
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 EMAILS_TABLE = os.environ["EMAILS_TABLE"]
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "digest@schoolskim.com")
+
+# Known senders used by email providers for forwarding verification.
+# Extend this as we encounter new providers.
+KNOWN_VERIFICATION_SENDERS = (
+    "forwarding-noreply@google.com",       # Gmail
+    "forwarding-noreply@cc.yahoo-inc.com", # Yahoo Mail
+    "no-reply@accountprotection.microsoft.com",  # Outlook / Microsoft
+)
+
+# Subject-keyword fallback for providers we haven't enumerated.
+# Require "forwarding" plus a verification-ish word to keep the filter
+# tight — a school email legitimately mentioning "verify" alone
+# shouldn't get relayed.
+_VERIFY_WORDS = ("confirm", "verif", "activate")
 
 
 def lambda_handler(event, context):
@@ -62,6 +78,22 @@ def lambda_handler(event, context):
                 if parsed["sender"]:
                     sender = parsed["sender"]
 
+        # If this is a forwarding verification email from any provider,
+        # relay it to the user's real inbox instead of storing it.
+        # Otherwise the user can't complete forwarding setup because the
+        # verification link lives in an inbox they don't have access to.
+        if _is_forwarding_verification(sender, subject):
+            _relay_verification_email(
+                owner_email=user["email"],
+                subject=subject,
+                body=body_text,
+            )
+            print(
+                f"Relayed forwarding verification to "
+                f"{user['email']} (user {user['user_id']})"
+            )
+            continue
+
         # Store in DynamoDB
         _store_email(
             user_id=user["user_id"],
@@ -78,6 +110,45 @@ def lambda_handler(event, context):
         )
 
     return {"statusCode": 200}
+
+
+def _is_forwarding_verification(sender: str, subject: str) -> bool:
+    """Detect a forwarding-verification email from any email provider."""
+    sender_lower = (sender or "").lower()
+    subject_lower = (subject or "").lower()
+
+    if any(s in sender_lower for s in KNOWN_VERIFICATION_SENDERS):
+        return True
+
+    # Subject heuristic: require BOTH "forwarding" and a verify-ish word.
+    if "forwarding" in subject_lower and any(
+        w in subject_lower for w in _VERIFY_WORDS
+    ):
+        return True
+
+    return False
+
+
+def _relay_verification_email(owner_email: str, subject: str, body: str) -> None:
+    """Forward a provider verification email to the user's real inbox."""
+    relay_subject = f"[SchoolSkim] Action required: {subject}"
+    relay_body = (
+        "Your email provider sent a forwarding verification to your\n"
+        "SchoolSkim address. We can't click the link for you, so we're\n"
+        "forwarding it here. Open the confirmation link below (or copy\n"
+        "the verification code) and paste it back into your provider's\n"
+        "forwarding settings to activate forwarding to SchoolSkim.\n\n"
+        "--- Original message ---\n\n"
+        f"{body}"
+    )
+    ses.send_email(
+        Source=FROM_EMAIL,
+        Destination={"ToAddresses": [owner_email]},
+        Message={
+            "Subject": {"Data": relay_subject, "Charset": "UTF-8"},
+            "Body": {"Text": {"Data": relay_body, "Charset": "UTF-8"}},
+        },
+    )
 
 
 def _lookup_user(forward_address: str) -> dict | None:

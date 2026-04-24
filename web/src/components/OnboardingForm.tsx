@@ -465,8 +465,14 @@ function SetupInstructions({ forwardAddress }: { forwardAddress: string }) {
               SchoolSkim address
             </li>
             <li>
-              Gmail will send a confirmation — check your inbox and click the
-              link
+              Gmail will send a verification to your SchoolSkim address.{" "}
+              <strong>
+                We&apos;ll forward it to your regular inbox within a minute
+              </strong>{" "}
+              — look for a message from SchoolSkim with{" "}
+              <strong>&ldquo;Action required&rdquo;</strong> in the subject,
+              then click the confirmation link (or copy the 9-digit code back
+              into Gmail).
             </li>
             <li>
               Back in settings, choose{" "}
