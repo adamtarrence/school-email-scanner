@@ -7,12 +7,16 @@
  */
 
 export function getAwsCredentials() {
-  const accessKeyId =
+  const accessKeyId = (
     process.env.SCHOOLSKIM_AWS_ACCESS_KEY_ID ||
-    process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey =
+    process.env.AWS_ACCESS_KEY_ID ||
+    ""
+  ).trim();
+  const secretAccessKey = (
     process.env.SCHOOLSKIM_AWS_SECRET_ACCESS_KEY ||
-    process.env.AWS_SECRET_ACCESS_KEY;
+    process.env.AWS_SECRET_ACCESS_KEY ||
+    ""
+  ).trim();
 
   if (accessKeyId && secretAccessKey) {
     return { accessKeyId, secretAccessKey };
@@ -22,8 +26,9 @@ export function getAwsCredentials() {
   return undefined;
 }
 
-export const AWS_REGION =
+export const AWS_REGION = (
   process.env.SCHOOLSKIM_AWS_REGION ||
   process.env.AWS_REGION ||
-  "us-east-1";
-export const USERS_TABLE = process.env.USERS_TABLE;
+  "us-east-1"
+).trim();
+export const USERS_TABLE = process.env.USERS_TABLE?.trim();
