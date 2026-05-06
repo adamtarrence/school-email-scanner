@@ -26,12 +26,17 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
     echo ""
 fi
 
-# Build
+# Build — only use the container build when a container runtime is up.
+# Pure-Python deps build fine without it, and not everyone runs Docker.
 echo "Building Lambda functions..."
-sam build \
-    --template-file infra/template.yaml \
-    --build-dir .aws-sam/build \
-    --use-container
+build_args=(
+    --template-file infra/template.yaml
+    --build-dir .aws-sam/build
+)
+if docker info >/dev/null 2>&1 || finch info >/dev/null 2>&1; then
+    build_args+=(--use-container)
+fi
+sam build "${build_args[@]}"
 
 # Deploy
 echo "Deploying stack: ${STACK_NAME}..."
