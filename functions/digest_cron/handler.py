@@ -97,7 +97,18 @@ def _process_user_digest(user: dict, now_utc: datetime):
         digest_md = "Quiet day \u2014 nothing from the schools today."
     else:
         print(f"Summarizing {len(emails)} email(s) for {user_id}...")
+
+        # Build link map (same email order as prompt)
+        link_map = {}
+        for i, em in enumerate(emails, 1):
+            mid = em.get("rfc822_message_id", "")
+            if mid:
+                link_map[f"EMAIL-{i}"] = _gmail_search_url(mid)
+
         digest_md = _summarize(emails, children)
+
+        if link_map:
+            digest_md = _replace_email_links(digest_md, link_map)
 
     # Build HTML
     html_body = _build_html(digest_md, date_str, user_email, user_id)
@@ -121,6 +132,25 @@ def _fetch_user_emails(user_id: str, since_iso: str) -> list[dict]:
         )
     )
     return resp.get("Items", [])
+
+
+# ── Email links ──
+
+
+def _gmail_search_url(rfc822_message_id: str) -> str:
+    """Build a Gmail web URL that searches by RFC 2822 Message-ID."""
+    mid = rfc822_message_id.strip("<>")
+    return f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{quote(mid, safe='@.')}"
+
+
+def _replace_email_links(markdown: str, link_map: dict[str, str]) -> str:
+    """Replace EMAIL-N placeholders with real Gmail search URLs."""
+    def replacer(match):
+        text, email_id = match.group(1), match.group(2)
+        url = link_map.get(email_id, "")
+        return f"[{text}]({url})" if url else text
+
+    return re.sub(r"\[([^\]]+)\]\((EMAIL-\d+)\)", replacer, markdown)
 
 
 # ── Summarization (ported from summarizer.py) ──
@@ -162,6 +192,34 @@ RULES:
 6. Do NOT write long summaries. A few words per item is ideal.
 7. Classify which child each item pertains to based on the school name or
    grade level mentioned in the email. If unclear, mark as "General".
+8. ALWAYS output in digest format using the section headers (## Action Items,
+   ## Coming Up, ## Quick Hits). NEVER respond conversationally, ask questions,
+   or comment on the quality/completeness of the emails. If an email body is
+   empty or incomplete, summarize based on the subject line alone.
+9. If an email body is empty or very short, include it in Quick Hits based on
+   whatever info is available (subject, sender). Never skip an email just
+   because its body is missing.
+
+LINKS:
+Each email is labeled EMAIL-1, EMAIL-2, etc. When you mention an item, make
+the key phrase a markdown link using that label as the URL. Example:
+  - **Spencer**: [Art club meeting moved to Thursday](EMAIL-2)
+The placeholder will be replaced with a real URL after you respond.
+Every bullet point should include at least one link so the parent can click
+through to the original email.
+
+FORMAT your response like this:
+
+## Action Items
+- **Beckett**: [Sign field trip permission slip](EMAIL-1) — due Friday
+- **Spencer**: [Pay lunch balance](EMAIL-3) — $15
+
+## Coming Up
+- **Spencer**: [Science fair](EMAIL-2) — April 5
+
+## Quick Hits
+- **Spencer**: [Art club](EMAIL-5) is doing watercolors this week
+- **District**: [Spring break](EMAIL-6) reminder — April 14-18
 
 Omit any section that has no items (but always include at least Quick Hits
 if there are any emails at all)."""

@@ -66,6 +66,7 @@ def lambda_handler(event, context):
         )
 
         # Try to get full body from S3
+        rfc822_message_id = ""
         s3_info = _get_s3_info(ses_event)
         if s3_info:
             raw_body = _fetch_from_s3(s3_info["bucket"], s3_info["key"])
@@ -77,6 +78,7 @@ def lambda_handler(event, context):
                     subject = parsed["subject"]
                 if parsed["sender"]:
                     sender = parsed["sender"]
+                rfc822_message_id = parsed.get("message_id", "")
 
         # If this is a forwarding verification email from any provider,
         # relay it to the user's real inbox instead of storing it.
@@ -102,6 +104,7 @@ def lambda_handler(event, context):
             sender=sender,
             body=body_text,
             raw_message_id=mail.get("messageId", ""),
+            rfc822_message_id=rfc822_message_id,
         )
 
         print(
@@ -245,7 +248,9 @@ def _parse_raw_email(raw: str) -> dict:
     if len(body) > 10000:
         body = body[:10000] + "\n[truncated]"
 
-    return {"subject": subject, "sender": sender, "body": body}
+    rfc822_message_id = msg.get("Message-ID", "") or msg.get("Message-Id", "")
+
+    return {"subject": subject, "sender": sender, "body": body, "message_id": rfc822_message_id}
 
 
 def _strip_html(html_text: str) -> str:
@@ -268,6 +273,7 @@ def _store_email(
     sender: str,
     body: str,
     raw_message_id: str,
+    rfc822_message_id: str = "",
 ) -> None:
     """Write parsed email to the Emails DynamoDB table."""
     table = dynamodb.Table(EMAILS_TABLE)
@@ -275,14 +281,16 @@ def _store_email(
     # TTL: auto-delete after 30 days
     ttl = int(datetime.now(timezone.utc).timestamp()) + (30 * 86400)
 
-    table.put_item(
-        Item={
-            "user_id": user_id,
-            "received_at": received_at,
-            "subject": subject,
-            "sender": sender,
-            "body": body,
-            "raw_message_id": raw_message_id,
-            "ttl": ttl,
-        }
-    )
+    item = {
+        "user_id": user_id,
+        "received_at": received_at,
+        "subject": subject,
+        "sender": sender,
+        "body": body,
+        "raw_message_id": raw_message_id,
+        "ttl": ttl,
+    }
+    if rfc822_message_id:
+        item["rfc822_message_id"] = rfc822_message_id
+
+    table.put_item(Item=item)
