@@ -103,7 +103,7 @@ def _process_user_digest(user: dict, now_utc: datetime):
         for i, em in enumerate(emails, 1):
             mid = em.get("rfc822_message_id", "")
             if mid:
-                link_map[f"EMAIL-{i}"] = _gmail_search_url(mid)
+                link_map[f"EMAIL-{i}"] = _mail_app_url(mid)
 
         digest_md = _summarize(emails, children)
 
@@ -137,14 +137,14 @@ def _fetch_user_emails(user_id: str, since_iso: str) -> list[dict]:
 # ── Email links ──
 
 
-def _gmail_search_url(rfc822_message_id: str) -> str:
-    """Build a Gmail web URL that searches by RFC 2822 Message-ID."""
+def _mail_app_url(rfc822_message_id: str) -> str:
+    """Build a message:// URL that opens in the default mail app (Apple Mail, Mimestream, etc.)."""
     mid = rfc822_message_id.strip("<>")
-    return f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{quote(mid, safe='@.')}"
+    return f"message://%3C{quote(mid, safe='@.')}%3E"
 
 
 def _replace_email_links(markdown: str, link_map: dict[str, str]) -> str:
-    """Replace EMAIL-N placeholders with real Gmail search URLs."""
+    """Replace EMAIL-N placeholders with message:// URLs for the default mail app."""
     def replacer(match):
         text, email_id = match.group(1), match.group(2)
         url = link_map.get(email_id, "")
