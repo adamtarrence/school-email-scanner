@@ -146,6 +146,8 @@ Every evening (per user's chosen time)
 
 **Live price ID:** `price_1TG45mBxA2bAYTuQFvN7vt4U`
 
+**Seasonal pause:** Pausing a subscriber uses Stripe's `pause_collection` (behavior `void`) via the API — it is **not** a cancellation and fires no webhook. Paused subscriptions stay active in Stripe, show a "paused" badge, and collect no payment until resumed. Resuming clears `pause_collection`. Billing is never auto-resumed.
+
 **Checkout flow:** Landing page → Stripe hosted checkout → redirect to `/success?session_id={id}` → onboarding form
 
 ---
@@ -199,6 +201,10 @@ Every evening (per user's chosen time)
 | `stripe_subscription_id` | String | Stripe subscription ID |
 | `status` | String | `active` or `inactive` (set on cancellation) |
 | `created_at` | String | ISO 8601 timestamp |
+| `paused` | Bool | `true` while seasonally paused for the summer (set via the pause link / account page) |
+| `paused_at` | String | ISO 8601, when the user last paused |
+| `resumed_at` | String | ISO 8601, when the user last resumed |
+| `reminders_sent` | String Set | Seasonal-reminder dedupe keys, e.g. `pause:2026`, `resume:2026:0728` |
 
 **Global Secondary Indexes:**
 - `forward_address-index` — Used by ingest Lambda to look up user from incoming email address
@@ -264,6 +270,23 @@ Every evening (per user's chosen time)
 
 **Timezone handling:** Uses Python's `zoneinfo` module to dynamically resolve UTC offsets, automatically handling DST transitions. Any valid IANA timezone name (e.g. `America/New_York`) is supported.
 
+#### `schoolskim-season-reminder-prod`
+- **Trigger:** EventBridge schedule — `cron(0 14 * * ? *)` (once daily, 14:00 UTC)
+- **Timeout:** 120 seconds
+- **Runtime:** Python 3.13
+- **What it does:**
+  1. On `PAUSE_REMINDER_DATE` (default `05-12`): emails active, non-paused users a "pause for the summer" nudge with a one-click pause link.
+  2. On any `RESUME_REMINDER_DATES` (default `07-28,08-25`): emails paused users a "resume for back-to-school" nudge with a one-click resume link.
+  3. Sends are one-per-user-per-occurrence, deduped via the `reminders_sent` set on the user record.
+- **Important:** this Lambda only *sends emails*. The actual pause/resume happens on the web app when the user clicks the link, so nothing is ever paused or resumed automatically.
+- **Source:** `functions/season_reminder/handler.py`
+- **Environment variables:** `BASE_URL`, `UNSUBSCRIBE_SECRET`, `FROM_EMAIL`, `PAUSE_REMINDER_DATE`, `RESUME_REMINDER_DATES`, plus all table names.
+- **Test without waiting for the calendar:** pass a `force_date`:
+  ```bash
+  aws lambda invoke --function-name schoolskim-season-reminder-prod \
+    --region us-east-1 --payload '{"force_date":"05-12"}' /dev/stdout
+  ```
+
 ---
 
 ### AWS S3 (Raw Email Storage)
@@ -328,6 +351,7 @@ Every evening (per user's chosen time)
 | `web/` | Next.js app (Vercel deploys from here) |
 | `functions/ingest_email/` | Email ingestion Lambda |
 | `functions/digest_cron/` | Digest cron Lambda |
+| `functions/season_reminder/` | Seasonal pause/resume reminder Lambda |
 | `infra/` | SAM template and deploy script |
 | `*.py` (root) | Original local Python digest engine (legacy, replaced by Lambdas) |
 | `.github/workflows/` | Legacy GitHub Actions digest cron (replaced by Lambda) |
@@ -390,6 +414,21 @@ Every evening (per user's chosen time)
 3. Webhook handler sends warning email via SES to the customer's email
 ```
 
+### Seasonal Pause Flow
+```
+1. Spring: the season-reminder Lambda emails active users a "pause for the summer" link.
+2. Parent clicks it → /api/pause → sets paused=true in DynamoDB and pauses Stripe
+   billing (pause_collection=void; no charges). Nothing is cancelled.
+3. While paused: the ingest Lambda DROPS forwarded emails (not stored) and the
+   digest cron skips the user.
+4. Late summer: the season-reminder Lambda emails paused users a "resume" link
+   (twice by default — a primary and a safety-net nudge).
+5. Parent clicks Resume → /api/resume → clears paused and resumes Stripe billing.
+   Billing is NEVER auto-resumed.
+```
+
+Users can also pause or resume anytime at `https://schoolskim.com/account` — a tokenized link included in the reminder emails and in every daily digest footer ("Pause or manage").
+
 ---
 
 ## Environment Variables
@@ -405,6 +444,7 @@ Every evening (per user's chosen time)
 | `SCHOOLSKIM_AWS_REGION` | `us-east-1` | AWS region |
 | `SCHOOLSKIM_AWS_ACCESS_KEY_ID` | `AKIA...` | AWS credentials for DynamoDB/SES |
 | `SCHOOLSKIM_AWS_SECRET_ACCESS_KEY` | `Q3km...` | AWS credentials for DynamoDB/SES |
+| `UNSUBSCRIBE_SECRET` | (optional) shared secret | Signs unsubscribe + account/pause/resume link tokens. **Must match the Lambda's `UnsubscribeSecret`** or those links won't verify. Both default to `schoolskim-unsub-default` if unset. |
 
 **Why `SCHOOLSKIM_AWS_*` instead of `AWS_*`?** Vercel reserves the `AWS_*` namespace and silently blocks deploys that set `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY`. The app code (`src/lib/aws.ts`) checks for both prefixes.
 
@@ -419,6 +459,10 @@ Every evening (per user's chosen time)
 | `ANTHROPIC_API_KEY` | Parameter | Claude API key (for digest cron only) |
 | `ANTHROPIC_MODEL` | Parameter | `claude-haiku-4-5-20251001` |
 | `FROM_EMAIL` | Template | `digest@schoolskim.com` |
+| `UNSUBSCRIBE_SECRET` | Parameter | Shared HMAC secret for unsubscribe + account links (must match Vercel) |
+| `BASE_URL` | Parameter | Base URL for account/pause/resume links (`https://schoolskim.com`) |
+| `PAUSE_REMINDER_DATE` | Parameter | MM-DD of the spring "pause" nudge (`05-12`) |
+| `RESUME_REMINDER_DATES` | Parameter | Comma-separated MM-DD fall "resume" nudges (`07-28,08-25`) |
 
 ### Local Development
 For local development without AWS, the onboarding route falls back to writing users to `web/.data/users.json` (gitignored). No AWS credentials needed locally.
@@ -639,4 +683,4 @@ rm ~/.aws/credentials ~/.aws/config
 
 ---
 
-*Last updated: March 28, 2026*
+*Last updated: May 30, 2026*

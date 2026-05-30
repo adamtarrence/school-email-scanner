@@ -96,6 +96,16 @@ def lambda_handler(event, context):
             )
             continue
 
+        # If the user has paused for the summer, drop forwarded school emails
+        # without processing or storing them. (Verification relays above still
+        # go through — those are account setup, not school content.)
+        if user.get("paused"):
+            print(
+                f"User {user['user_id']} is paused; dropping email: "
+                f"{subject[:60]}"
+            )
+            continue
+
         # Store in DynamoDB
         _store_email(
             user_id=user["user_id"],
