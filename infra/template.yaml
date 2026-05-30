@@ -21,7 +21,19 @@ Parameters:
     Type: String
     NoEcho: true
     Default: schoolskim-unsub-default
-    Description: HMAC secret for unsubscribe link tokens
+    Description: HMAC secret for unsubscribe + self-service account link tokens
+  BaseUrl:
+    Type: String
+    Default: https://schoolskim.com
+    Description: Base URL used to build account / pause / resume links in emails
+  PauseReminderDate:
+    Type: String
+    Default: 05-12
+    Description: MM-DD on which to email active users the "pause for summer" nudge
+  ResumeReminderDates:
+    Type: String
+    Default: 07-28,08-25
+    Description: Comma-separated MM-DD dates to email paused users a "resume" nudge
 
 Globals:
   Function:
@@ -178,6 +190,40 @@ Resources:
             Description: "Run every hour from 6pm-9pm across US timezones (22-03 UTC)"
             Enabled: true
 
+  # ── Lambda: Seasonal Pause/Resume Reminders ──
+
+  SeasonReminderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub schoolskim-season-reminder-${Stage}
+      Handler: handler.lambda_handler
+      CodeUri: ../functions/season_reminder/
+      Timeout: 120
+      Environment:
+        Variables:
+          FROM_EMAIL: !Sub "digest@${EmailDomain}"
+          BASE_URL: !Ref BaseUrl
+          UNSUBSCRIBE_SECRET: !Ref UnsubscribeSecret
+          PAUSE_REMINDER_DATE: !Ref PauseReminderDate
+          RESUME_REMINDER_DATES: !Ref ResumeReminderDates
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 14 * * ? *)
+            Description: "Daily check for seasonal pause/resume reminders (14:00 UTC)"
+            Enabled: true
+
   # ── S3 Bucket for SES raw emails ──
 
   SesEmailBucket:
@@ -248,5 +294,7 @@ Outputs:
     Value: !GetAtt IngestEmailFunction.Arn
   DigestCronFunctionArn:
     Value: !GetAtt DigestCronFunction.Arn
+  SeasonReminderFunctionArn:
+    Value: !GetAtt SeasonReminderFunction.Arn
   SesEmailBucketName:
     Value: !Ref SesEmailBucket
